@@ -37,7 +37,12 @@ class Serial_Hardware(unittest.TestCase):
             data = self.serial.read(A._id, A.event, 3)
             self.assertEqual(data, [A._id, 'ok'])
 
-                
+    def test_unknow_ansewer_length(self):
+        command = pkg("G28 X", read = True, answer_lines=-1, timeout=120, end_echo='ok')
+        self.serial.send(command)
+        data = self.serial.read(command._id, command.event, command.timeout)
+        self.assertTrue(set(["echo:busy: processing", "ok"]).issubset(set(data)))
+
     @classmethod
     def tearDownClass(cls):
         cls.serial.stop()

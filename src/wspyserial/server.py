@@ -51,11 +51,11 @@ class Server():
             _id = _id._id
         return json.dumps({"_id":_id,"data":message})
         
-    def read(self, _id, event):
-        return self.SERIAL.read(_id, event, 2)
+    def read(self, _id, event, timeout=2):
+        return self.SERIAL.read(_id, event, timeout)
 
     def send(self, package):
-        return self.SERIAL.send(package)
+        return *self.SERIAL.send(package), package.timeout
 
     async def handler(self, websocket):
         try:
@@ -65,8 +65,8 @@ class Server():
                 if package.read:
                     response = self.read(*reference)
                     await websocket.send(self.packing(package, response))
-        except websockets.ConnectionClosed:
-            print('Connection closed', websocket)
+        except websockets.ConnectionClosed as e:
+            print('Connection closed', websocket, e)
             pass
 
 async def main(host, port, device, baudrate, force_create=False):

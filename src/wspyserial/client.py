@@ -20,9 +20,11 @@ class Device():
         self.uri = uri
         self.stopped = Event()
         self.loop = loop if loop is not None else asyncio.get_event_loop()
+        self.reconnections = 0
+        self.reconnect_limit = 3
 
     async def __aenter__(self):
-        self.websocket = await websockets.connect(self.uri)
+        await self.connect()
         return self
 
     async def __aexit__(self, *args):
@@ -30,17 +32,45 @@ class Device():
 
     def close(self):
         self.stopped.set()
+    
+    async def connect(self):
+        """
+        Connect to the websocket server.
+        """
+        self.websocket = await websockets.connect(self.uri)
+    
+    async def reconnect(self):
+        """
+        Reconnect to the websocket server.
+        """
+        if self.reconnections < self.reconnect_limit:   # Avoid infinite loop
+            self.reconnections += 1                     # Increase reconnection counter
+            try:                                        # Try to reconnect
+                await self.connect()                    # Connect to the websocket server
+                self.reconnections = 0                  # Reset reconnection counter
+            except ConnectionRefusedError:              # If connection is refused
+                import random
+                await asyncio.sleep(random.random())    # Wait 0.N second
+                await self.reconnect()                  # Try to reconnect again
+        else:                                           # If reconnection limit is reached
+            self.close()                                # Close the connection
+            raise ConnectionError("Connection to server lost.")
+        
 
     async def send(self, package):
         """
         Send a package to the server and wait for an answer.
         (package): protocol.package object
         """
-        if not isinstance(package, pkg):
-            raise TypeError(f"package must be instance of {pkg}")
-        await self.websocket.send(json.dumps(package.json()))
-        if package.read:
-            return pkg(**json.loads(await self.websocket.recv()))
+        try:
+            if not isinstance(package, pkg):
+                raise TypeError(f"package must be instance of {pkg}")
+            await self.websocket.send(json.dumps(package.json()))
+            if package.read:
+                return pkg(**json.loads(await self.websocket.recv()))
+        except websockets.exceptions.ConnectionClosed:
+            await self.reconnect()
+            await self.send(package)
 
 
 async def unit_test(show=False):
@@ -99,7 +129,10 @@ async def main(uri, raw=False):
                     await c.send(data)
                 else:
                     qtd_ansers = int(input('Qtd answers: '))
-                    print("Echo :", await c.send(pkg(data=data, answer_lines=qtd_ansers)))
+                    timeout = int(input('Timeout: '))
+                    if qtd_ansers <0:
+                        echo = input('Last response: ')
+                    print("Echo :", await c.send(pkg(data=data, answer_lines=qtd_ansers, timeout=timeout, end_echo=echo)))
         except KeyboardInterrupt:
             c.close()
 

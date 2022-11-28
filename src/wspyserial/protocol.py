@@ -2,14 +2,16 @@ import queue
 from threading import Thread, Event
 import uuid
 import random
-
+import time
 class package:
-    def __init__(self, data, answer_lines=1, _id=None, read=True):
+    def __init__(self, data, answer_lines=1, _id=None, read=True, end_echo="ok", timeout=2):
         self._id = uuid.uuid4().hex if _id is None else _id
         self.event = Event()
         self.data = data
         self.answer_lines = answer_lines
         self.read = read
+        self.end_echo = end_echo
+        self.timeout = timeout
     
     def __repr__(self):
         return f"package({self.data}, {self.answer_lines})"
@@ -18,7 +20,7 @@ class package:
         return self.__repr__()
 
     def json(self):
-        return {"_id": self._id, "data": self.data, "answer_lines": self.answer_lines, "read": self.read}
+        return {"_id": self._id, "data": self.data, "answer_lines": self.answer_lines, "read": self.read, "end_echo": self.end_echo, "timeout":self.timeout}
 
 class Package_Manager:
     def __init__(self, writer, reader, **kwargs) -> None:
@@ -73,21 +75,30 @@ class Package_Manager:
             elif answer is not None:
                 self.answers.put(answer)
 
+    def __process_input(self, output_list, package):
+        data = self.answers.get()
+        self.answers.task_done()
+        if package.read:
+            output_list.append(data)
     
     def processor(self):
         while not self.is_stopped():
             package = self.answers_order.get()
             self.answers_order.task_done()
             answers = []
-            for _ in range(package.answer_lines):
-                data = self.answers.get()
-                self.answers.task_done()
-                if package.read:
-                    answers.append(data)
+            if package.answer_lines > 0:
+                for _ in range(package.answer_lines):
+                    self.__process_input(answers, package)
+            else:
+                t0 = time.time()
+                while time.time() - t0 < package.timeout:
+                    self.__process_input(answers, package)
+                    if package.end_echo in answers[-1]:
+                        break
             if answers != []:
                 self.processed_answers[package._id] = answers
                 package.event.set()
-        
+
 
 def example_packages(qtd):
     packages = []
