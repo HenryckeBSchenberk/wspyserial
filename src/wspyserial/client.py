@@ -130,8 +130,7 @@ async def main(uri, raw=False):
                 else:
                     qtd_ansers = int(input('Qtd answers: '))
                     timeout = int(input('Timeout: '))
-                    if qtd_ansers <0:
-                        echo = input('Last response: ')
+                    echo = input('Last response: ') if qtd_ansers <0 else "ok"
                     print("Echo :", await c.send(pkg(data=data, answer_lines=qtd_ansers, timeout=timeout, end_echo=echo)))
         except KeyboardInterrupt:
             c.close()
